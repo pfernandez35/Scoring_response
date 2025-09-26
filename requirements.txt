@@ -1,0 +1,6 @@
+transformers
+torch
+sentencepiece
+sentence-transformers
+language-tool-python
+scikit-learn

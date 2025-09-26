@@ -1,0 +1,86 @@
+from sentence_transformers import SentenceTransformer, util
+from transformers import pipeline
+from spellchecker import SpellChecker
+
+# ============================
+# 1. Initialisation des modèles
+# ============================
+
+# Embeddings multilingues
+embedder = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+
+# Analyse émotion / sentiment (multilingue)
+emotion_classifier = pipeline(
+    "sentiment-analysis",
+    model="nlptown/bert-base-multilingual-uncased-sentiment"
+)
+
+# Correcteur orthographique basique
+spell = SpellChecker(language="fr")
+
+# ============================
+# 2. Fonction de scoring
+# ============================
+
+def score_response(question: str, response: str) -> dict:
+    # --- Longueur ---
+    words = response.split()
+    num_words = len(words)
+
+    # --- Diversité lexicale ---
+    unique_words = len(set(words))
+    lexical_diversity = unique_words / num_words if num_words > 0 else 0
+
+    # --- Fautes d’orthographe --- ##TO FIX
+    #misspelled = spell.unknown(words)
+    #num_errors = len(misspelled)
+    num_errors = 0
+
+    # --- Émotion ---
+    emotion = emotion_classifier(response[:512])[0]  # tronqué si >512 tokens
+
+    # --- Pertinence avec la question ---
+    q_emb = embedder.encode(question, convert_to_tensor=True)
+    r_emb = embedder.encode(response, convert_to_tensor=True)
+    relevance_score = util.cos_sim(q_emb, r_emb).item()
+
+    # ============================
+    # 3. Agrégation en score global
+    # ============================
+
+    length_score = min(num_words / 50, 1.0)  # max points si >= 50 mots
+    diversity_score = lexical_diversity
+    grammar_score = max(1 - num_errors / 10, 0)
+    relevance_score_norm = max(min((relevance_score + 1) / 2, 1), 0)
+
+    # Score final pondéré
+    final_score = (
+        0.25 * length_score +
+        0.25 * diversity_score +
+        0.25 * grammar_score +
+        0.15 * relevance_score_norm +
+        0.10 * emotion["score"]
+    ) * 100
+
+    return {
+        "longueur (nb mots)": num_words,
+        "diversité lexicale": round(lexical_diversity, 2),
+        "fautes détectées": num_errors,
+        "émotion": emotion["label"],
+        "émotion_score": round(emotion["score"], 2),
+        "pertinence (cosine)": round(relevance_score_norm, 2),
+        "score_final": round(final_score, 2)
+    }
+
+# ============================
+# 4. Exemple d’utilisation
+# ============================
+
+#if __name__ == "__main__":
+question = "Quelle a été ta plus belle expérience de voyage ?"
+response = "J'ai adoré mon séjour en Italie, la nourriture était incroyable et les gens très chaleureux en Italie, je suis trop triste d'être parti et maintenant je ne veux plus rien faire du tout putain."
+response2 = "Quimper chez les grand-parents"
+result1 = score_response(question, response)
+result2 = score_response(question, response2)
+print(result1)
+print(result2)
