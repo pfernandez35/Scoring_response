@@ -1,5 +1,5 @@
 ```bash
-git clone https://github.com/ton-compte/text-scoring.git
+git clone https://github.com/pfernandez35/Scoring_response.git
 cd text-scoring
 python -m venv venv 
 source venv/bin/activate
